@@ -2,77 +2,22 @@
 
 Per-zone **demand → price** models for the Central-European CORE-region electricity and
 hydrogen markets, trained on Project 3's own LP economic-dispatch output (NT2030
-scenario). A separate gradient-boosted model is fit per bidding zone, so each zone gets
-its own demand → price curve.
+scenario). Each bidding zone gets its own gradient-boosted demand → price curve.
 
 | Commodity | Demand input | Price output | Zones modelled |
 |-----------|--------------|---------------|----------------|
 | Electricity | `Demand (-)` | `Marginal Price (EUR/MWh)` | 16 |
 | Hydrogen | `Demand (-)` | `Marginal Price (EUR/MWhH2)` | 13 |
 
-(4 electricity / 7 hydrogen CORE-region zones are hub/offshore nodes with no native
-demand of their own, so they have no trained model of their own — see
-`price_model/extract.py`.)
-
-## Features
-
-- Python API — `electricity_price(zone, demand, **ctx)` / `hydrogen_price(zone, h2_demand, **ctx)`
-- Demand is the only required argument; every other feature defaults to that zone's median
-
-## Project structure
-
-```
-price_model/
-  config.py        # commodities: target, demand, feature list, output filenames
-  extract.py        # balance CSV -> tidy per-(zone, hour) feature table
-  multivariate.py    # per-zone model training, CV scoring, predict()
-  api.py             # electricity_price(), hydrogen_price(), available_zones()
-  neighbors.py        # neighbour/system-total demand features
-
-build_dataset.py    # hourly_balance_*.csv -> outputs/{elec,h2}_samples.parquet (maintainer-only)
-train_model.py       # sample parquets -> outputs/*_model.joblib + *_metrics.csv
-
-economic_dispatch/   # Project 3's dispatch-engine code, vendored locally (see CLAUDE.md)
-optimize_h2_producer.py  # standalone H2 Producer LP, priced by this project's own
-                      # trained proxy instead of Project 3's full network coupling
-                      # (see Formulation.md §2)
-
-inputs/              # sample parquets, hourly_balance_*.csv, adjacency JSONs, zones/
-                      # networks parquet DBs (all committed, all local copies of Project 3
-                      # exports — no dependency on a Project 3 checkout being present)
-outputs/             # trained models + metrics (git-ignored)
-```
-
-## Accuracy caveat
-
-The headline CV R² in `outputs/*_metrics.csv` (`cv_r2`) is scored with every feature at
-its **real** historical value, including each zone's top-5 correlated-neighbour prices —
-for most zones, a neighbour's own price is by far the strongest feature (permutation
-importance 1–2, vs ~0.1 for everything else). But the documented API contract —
-`electricity_price(zone, demand)` / `hydrogen_price(zone, h2_demand)`, demand as the only
-required argument — defaults every feature *other* than demand, including those neighbour
-prices, to that zone's training-set **median**. So a real demand-only call does not get to
-use the feature that `cv_r2` is mostly measuring.
-
-`outputs/*_metrics.csv` also reports `demand_only_r2`/`demand_only_rmse`: the same model,
-evaluated the same way a real `electricity_price(zone, demand)` call would build its input
-(see `price_model/multivariate.py::demand_only_row`, shared code with `api.py` so the two
-never drift apart). Treat `demand_only_r2` as the accuracy a bare demand-only call actually
-delivers; treat `cv_r2` as an upper bound reachable only if you also pass the real
-neighbour prices (and other context) as keyword overrides, e.g.
-`electricity_price("DE00", demand, price_LUG1=42.0)`.
+(Hub/offshore zones with no native demand have no trained model of their own.)
 
 ## Installation
-
-Dependencies are listed in `requirements.txt`:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
-
-### Python API
+## Python API
 
 ```python
 from price_model import electricity_price, hydrogen_price, available_zones
@@ -87,18 +32,64 @@ available_zones("electricity")
 available_zones("hydrogen")
 ```
 
-### Training pipeline
+Demand is the only required argument; every other feature defaults to that zone's median.
+
+## Web user interface
+
+A local Django dashboard (`webui/`) for exploring the models without writing code.
+
+**Run it:**
 
 ```bash
-# Train both models from the committed sample parquets
-python train_model.py
-
-# Retrain a single commodity
-python train_model.py --only hydrogen
+app.bat
 ```
 
-Regenerating the sample parquets (`build_dataset.py`) is a maintainer-only step: it reads
-`inputs/hourly_balance_{elec,h2}.csv` and `inputs/networks_2030.parquet` — local copies of
-Project 3's dispatch-model output. To refresh them, rerun Project 3's `run_dispatch.py`
-for a fresh scenario and copy its `outputs/hourly_balance_*.csv` and
-`inputs/networks_2030.parquet` here.
+This creates a `.venv`, installs dependencies, applies migrations, and opens the
+dashboard in your browser (`http://127.0.0.1:8000`).
+
+**What it does:**
+
+1. Pick one or more countries and a day-of-year range. Each country auto-selects its
+   modelled zones (⚡ electricity, 🧪 hydrogen).
+2. For each selected zone, it plots our predicted price against the real historical
+   price over that range.
+3. For each country's hydrogen zone, it re-solves a standalone Hydrogen Producer LP
+   (`optimize_h2_producer.py`) priced off our model instead of the full network solve,
+   and compares grid/pipeline exchange against the real historical schedule, plus the
+   LP's own Green Certificate bought/sold figures (no historical GC data exists to
+   compare against).
+4. Every run is saved, so revisiting a country shows its last result instantly instead
+   of re-solving.
+
+## Training pipeline
+
+```bash
+python train_model.py               # train both commodities
+python train_model.py --only hydrogen   # retrain just one
+```
+
+Training reads the committed sample parquets in `inputs/`. Regenerating those parquets
+(`build_dataset.py`) is a maintainer-only step — see `CLAUDE.md`.
+
+## Accuracy caveat
+
+`outputs/*_metrics.csv`'s `cv_r2` is scored with every feature at its real value,
+including each zone's most-correlated neighbour prices — usually the single strongest
+feature. But `electricity_price(zone, demand)` defaults everything except demand to the
+zone's median, so a real demand-only call can't use that feature. `demand_only_r2` in the
+same CSV scores the model the way a real demand-only call actually queries it — treat
+that number as the honest accuracy for this API, and `cv_r2` as an upper bound reachable
+only by also passing real neighbour prices as keyword overrides.
+
+## Project structure
+
+```
+price_model/          per-zone model training + prediction API
+economic_dispatch/    Project 3's dispatch-engine code, vendored locally
+optimize_h2_producer.py   standalone Hydrogen Producer LP, priced by our model
+webui/                 Django dashboard
+build_dataset.py       hourly_balance_*.csv -> sample parquets (maintainer-only)
+train_model.py         sample parquets -> trained models + metrics
+inputs/                sample parquets, balance CSVs, adjacency/zone/network data
+outputs/               trained models + metrics (git-ignored, regenerate with train_model.py)
+```
