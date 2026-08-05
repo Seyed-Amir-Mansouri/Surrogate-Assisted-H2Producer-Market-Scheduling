@@ -88,7 +88,6 @@ price_model/          per-zone model training + prediction API
 economic_dispatch/    Project 3's dispatch-engine code, vendored locally
 optimize_h2_producer.py   standalone Hydrogen Producer LP, priced by our model
 webui/                 Django dashboard
-build_dataset.py       hourly_balance_*.csv -> sample parquets (maintainer-only)
 train_model.py         sample parquets -> trained models + metrics
 inputs/                sample parquets, balance CSVs, adjacency/zone/network data
 outputs/               trained models + metrics (git-ignored, regenerate with train_model.py)
