@@ -1,0 +1,11 @@
+inputs/*.xlsx
+outputs/*.csv
+.venv/
+db.sqlite3
+__pycache__/
+*.pyc
+build_dataset.py
+.claude/
+CLAUDE.md
+catboost_info/
+.gitignore
