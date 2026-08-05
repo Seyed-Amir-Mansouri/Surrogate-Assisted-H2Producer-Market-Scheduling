@@ -1,0 +1,73 @@
+{% extends "proxy_dashboard/base.html" %}
+{% load static %}
+{% block title %}Results — Price Proxy Dashboard{% endblock %}
+{% block content %}
+
+<a class="back-link" href="{% url 'proxy_dashboard:index' %}">&larr; Country Selector</a>
+
+{% if not_found %}
+  <div class="panel">
+    <h2>No results yet</h2>
+    <p class="empty-note">No stored run for {{ country_name }} ({{ not_found }}) — go back to the
+      Country Selector above and run it first.</p>
+  </div>
+{% else %}
+
+  {% if not single_country %}
+    <div class="tab-bar">
+      {% for cr in country_results %}
+        <div class="tab-btn{% if forloop.first %} active{% endif %}" data-country="{{ cr.country }}">
+          <span class="flag-icon flag-{{ cr.country }}"></span><span>{{ cr.country_name }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% for cr in country_results %}
+    <div class="tab-panel{% if forloop.first %} active{% endif %}" data-country="{{ cr.country }}">
+
+      <div class="panel">
+        <h2>{{ cr.country_name }} — days {{ cr.run.start_day }}–{{ cr.run.end_day }}
+          <span class="note" style="display:inline">(run {{ cr.run.created_at|date:"Y-m-d H:i" }})</span></h2>
+
+        {% if cr.run.elec_metrics or cr.run.h2_metrics %}
+          <div class="metric-row">
+            {% if cr.run.elec_zone and cr.run.elec_metrics %}
+              <div class="metric-tile {% if cr.run.elec_metrics.r2 >= 0.7 %}good{% else %}warn{% endif %}">
+                <span class="v">{{ cr.run.elec_metrics.r2|floatformat:3 }}</span>
+                <span class="k">{{ cr.run.elec_zone }} elec R²</span>
+              </div>
+              <div class="metric-tile"><span class="v">{{ cr.run.elec_metrics.rmse|floatformat:1 }}</span><span class="k">Elec RMSE (EUR/MWh)</span></div>
+              <div class="metric-tile"><span class="v">{{ cr.run.elec_metrics.corr|floatformat:3 }}</span><span class="k">Elec corr.</span></div>
+            {% endif %}
+            {% if cr.run.h2_zone and cr.run.h2_metrics %}
+              <div class="metric-tile {% if cr.run.h2_metrics.r2 >= 0.7 %}good{% else %}warn{% endif %}">
+                <span class="v">{{ cr.run.h2_metrics.r2|floatformat:3 }}</span>
+                <span class="k">{{ cr.run.h2_zone }} H2 R²</span>
+              </div>
+              <div class="metric-tile"><span class="v">{{ cr.run.h2_metrics.rmse|floatformat:1 }}</span><span class="k">H2 RMSE (EUR/MWhH2)</span></div>
+              <div class="metric-tile"><span class="v">{{ cr.run.h2_metrics.corr|floatformat:3 }}</span><span class="k">H2 corr.</span></div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        <div class="chart-grid">
+          {% if cr.figs.elec %}
+            <div class="chart-card">{{ cr.figs.elec|safe }}</div>
+          {% endif %}
+          {% if cr.figs.h2 %}
+            <div class="chart-card">{{ cr.figs.h2|safe }}</div>
+          {% endif %}
+        </div>
+
+        {% if not cr.run.elec_zone %}<p class="note">No electricity model for this country's selected zone(s).</p>{% endif %}
+        {% if not cr.run.h2_zone %}<p class="note">No hydrogen model for this country's selected zone(s).</p>{% endif %}
+      </div>
+
+    </div>
+  {% endfor %}
+
+{% endif %}
+
+<script src="{% static 'proxy_dashboard/app.js' %}"></script>
+{% endblock %}

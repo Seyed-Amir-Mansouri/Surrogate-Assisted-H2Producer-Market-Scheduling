@@ -1,0 +1,79 @@
+{% extends "proxy_dashboard/base.html" %}
+{% load static %}
+{% block title %}Price Proxy Dashboard{% endblock %}
+{% block content %}
+
+{% if errors %}
+  <div class="errors">
+    <strong>Fix before running:</strong>
+    <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+{% endif %}
+
+<form method="post" action="{% url 'proxy_dashboard:run' %}" id="run-form">
+  {% csrf_token %}
+
+  <div class="panel">
+    <h2>Countries</h2>
+    <p class="panel-sub">Selecting a country automatically includes its coupled zones (shown below each name — ⚡ electricity proxy, 🧪 hydrogen proxy) — they're always used together.</p>
+    <div class="country-grid">
+      {% for country in country_groups %}
+        <label class="country-card">
+          <div class="country-card-head">
+            <input type="checkbox" name="countries" value="{{ country.code }}"
+                   {% if country.code in selected_countries %}checked{% endif %}>
+            <span class="flag-icon flag-{{ country.code }}"></span>
+            <span>{{ country.name }}</span>
+          </div>
+          <div class="zone-badges">
+            {% for z in country.zones %}
+              <span class="zone-chip">
+                {{ z.code }}
+                {% if z.has_elec %}<span class="badge badge-elec">⚡</span>{% endif %}
+                {% if z.has_h2 %}<span class="badge badge-h2">🧪</span>{% endif %}
+              </span>
+            {% endfor %}
+          </div>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Day range (of the modelled 364-day year)</h2>
+    <div class="day-row">
+      <div class="field">
+        <label for="start_day">Start day</label>
+        <input type="number" id="start_day" name="start_day" min="{{ day_min }}" max="{{ day_max }}"
+               value="{{ start_day|default:default_start_day }}" required>
+      </div>
+      <div class="field">
+        <label for="end_day">End day</label>
+        <input type="number" id="end_day" name="end_day" min="{{ day_min }}" max="{{ day_max }}"
+               value="{{ end_day|default:default_end_day }}" required>
+      </div>
+      <div class="field">
+        <label>Presets</label>
+        <div class="presets">
+          <span class="preset-btn" data-days="1">1 day</span>
+          <span class="preset-btn" data-days="7">1 week</span>
+          <span class="preset-btn" data-days="31">1 month</span>
+          <span class="preset-btn" data-days="364">Full year</span>
+        </div>
+      </div>
+    </div>
+    <p class="note">Longer ranges re-optimize a bigger Hydrogen Producer LP per H2-modeled zone — a week is fast, a full year takes longer.</p>
+  </div>
+</form>
+
+<button class="run" type="submit" form="run-form">Run Proxy</button>
+
+<div id="processing-overlay">
+  <div class="processing-box">
+    <div class="spinner"></div>
+    <p>Running the price proxy &amp; Hydrogen Producer LP&hellip;</p>
+  </div>
+</div>
+
+<script src="{% static 'proxy_dashboard/app.js' %}"></script>
+{% endblock %}
